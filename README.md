@@ -1,5 +1,12 @@
 # LetItCode
 
+AWS configs:
+- Machine IMG: ami-0aada1758622f91bb
+- Instance: g5.2xlarge
+- storage: 150 GB
+
+## Reminders
+- Get model permission access from the huggingface model card
 
 ## Dataset
 - Leetcode dataset [(data card)](https://huggingface.co/datasets/RayBernard/leetcode)

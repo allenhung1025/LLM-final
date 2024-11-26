@@ -17,6 +17,7 @@ MODEL_MAP = {
 @torch.inference_mode()
 def download_model(model_type: str):
     model_name = MODEL_MAP[model_type]
+    print(f"Start downloading {model_name} ...")
     model = AutoModelForCausalLM.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     print("Download completed! \n huggingface caceh directory: ", tokenizer.cache_dir)
@@ -38,3 +39,7 @@ def main():
     device = determine_device()
     model, tokenizer = download_model(args.model)
     print("Done!")
+    
+if __name__ == "__main__":
+    main()
+    
