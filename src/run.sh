@@ -1,0 +1,1 @@
+python train.py --run_name "test" --model "gemma" --epochs 5 --batch_size 32 --lr 1e-3 --seqlen 512 --output "gemma"
