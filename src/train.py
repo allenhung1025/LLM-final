@@ -1,77 +1,60 @@
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    DataCollatorForLanguageModeling,
+    Trainer,
+    TrainingArguments,
+    HfArgumentParser
+)
 import argparse
 import json
-from typing import List, Union, Dict
-from tqdm import tqdm
+import os
 import torch
-from torch.utils.data import DataLoader, random_split
-from transformers import AutoModelForCausalLM, AdamW, AutoTokenizer
-from datasets import load_dataset
-from utils.constant import MODEL_MAP
+import math
+from torch.utils.data import random_split
+import logging
+from dataclasses import dataclass, field
+from utils.constant import MODEL_MAP, PROJECT_ROOT
 from utils.determine_device import determine_device
-from utils.data_prepare import load_training_data, load_tokenzied_data, tokenize_data
-from trainer import Trainer
+from utils.data_prepare import load_training_data, TextDataset
+# from trainer import Trainer
 import wandb
 
-
-
-
+torch.cuda.empty_cache()
 device = determine_device()
 
-def collate_fn(batch):
-    return {
-        "input_ids": torch.stack([torch.tensor(example["input_ids"]) for example in batch]),
-        "attention_mask": torch.stack([torch.tensor(example["attention_mask"]) for example in batch]),
-        "labels": torch.stack([torch.tensor(example["labels"]) for example in batch])
-    }
-    
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+
+@dataclass
+class ModelConfig:
+    seq_len: int = field(default=512)
+    attention_type: str = field(default="flash_attention_2")
+
 def parse_args():
     parser = argparse.ArgumentParser()
     
-    parser.add_argument(
-        "--run_name", 
-        type=str,
-        required=True, 
-        help="Name of the run"
-    )
+    # parser.add_argument(
+    #     "--run_name", 
+    #     type=str,
+    #     required=True, 
+    #     help="Name of the run"
+    # )
     parser.add_argument(
         "--model", 
         type=str,
         required=True, 
         choices=MODEL_MAP.keys(),
-        help="The type of the model: "
-    )
-    parser.add_argument(
-        "--epochs",
-        type=int,
-        required=True,
-        help="Training epochs"
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        required=True,
-        help="Batch size"
+        help="The model to train, also the name of the model and config files "
     )
     
     parser.add_argument(
-        "--seqlen",
-        type=int,
-        required=True,
-        help="Max sequence length"
-    )
-    
-    parser.add_argument(
-        "--lr",
-        type=float,
-        required=True,
-        help="Learning rate"
-    )
-    
-    parser.add_argument(
-        "--output",
+        "--configs",
         type=str,
         required=True,
-        help="model checkpoint output path"
+        help="config filename for the model training"
     )
     
     return parser.parse_args()
@@ -83,52 +66,66 @@ def main():
     
     args = parse_args()
     wandb_api = credentials['wandb_api_key']
+    parser = HfArgumentParser((ModelConfig, TrainingArguments))
+    filename = args.configs + ".json"
+    model_config, training_args = parser.parse_json_file(json_file=PROJECT_ROOT / "configs" / filename)
+    
     wandb.login(key=wandb_api)
     
-    wandb.init(project="gemma_ft", config=args, name=args.run_name)
     
-    
-
-    # tokenizing
     data = load_training_data(args.model + "_train.jsonl")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_MAP[args.model])
-    tokenize_data(data, tokenizer=tokenizer, max_len=args.seqlen)
-    dataset = load_tokenzied_data(args.model)
+    tokenizer.pad_token = tokenizer.eos_token
+    dataset = TextDataset(data, tokenizer, model_config.seq_len)
     
-    # Create a DataLoader with a batch size of 8
-    batch_size = args.batch_size
-    train_size = int(0.8 * len(dataset))  # 80% for training
-    val_size = len(dataset) - train_size  # 20% for validation
+    
+    train_size = int(0.8 * len(dataset))
+    val_size = len(dataset) - train_size
 
-    # Split the dataset into training and validation sets
+    # Use random_split to split the dataset
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    
 
-    # Create DataLoaders for training and validation sets
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=False)
+    # data prepare for causal language model 
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
     
-    
-    
-    # model
+    # model + flash attention
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_MAP[args.model], 
-        torch_dtype="float16"  # we need half-precision to fit into our machine
+        torch_dtype=torch.bfloat16,  # we need half-precision to fit into our machine
+        attn_implementation= model_config.attention_type,
+        trust_remote_code=True
     ).to(device)
     
-    # Define optimizer (AdamW is commonly used for transformer models)
-    optimizer = AdamW(model.parameters(), lr=args.lr)
-    
-    
-    # Training
-    Trainer(
+    # Trainer initialization
+    trainer = Trainer(
         model=model,
-        optimizer=optimizer,
-        train_dataloader=train_dataloader,
-        val_dataloader=val_dataloader,
-        save_path=args.output,
-        args=args
-    ).train()
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+    )
     
+    trainer.train()
+    trainer.save_model(training_args.output_dir)
+    
+    
+    ### add by me to save log of perplexity
+    log_file_path = os.path.join(training_args.output_dir, "perplexity_log.txt")
+
+    def log_perplexity(log_file_path, seq_len, perplexity):
+        with open(log_file_path, "a") as f:
+            f.write(f"Perplexity ({seq_len}): {perplexity:.2f}\n")
+        logger.info(f"Perplexity ({seq_len}): {perplexity:.2f}")
+        
+    
+    # Elvaluate
+    results = trainer.evaluate(eval_dataset=val_dataset)
+    print(f"Perplexity (seq_len = {training_args.seq_len}): {math.exp(results['eval_loss']):.2f}")
+    
+    perplexity = math.exp(results['eval_loss'])
+    log_perplexity(log_file_path, training_args.seq_len, perplexity)
 
 
 if __name__ == "__main__":

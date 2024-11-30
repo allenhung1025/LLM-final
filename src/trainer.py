@@ -1,3 +1,5 @@
+# I actually used huggiingface's instead
+
 import wandb
 from pathlib import Path
 import torch
@@ -94,7 +96,7 @@ class Trainer:
         Main training loop that calls `train_one_epoch` for each epoch.
         """
         # Initialize WandB
-        wandb.init(project=self.args.wandb_project, config=self.args, name=f"training_run")
+        wandb.init(project=self.args.model, config=self.args, name=f"training_run")
 
         for epoch in range(self.args.epochs):
             print(f"Starting epoch {epoch + 1}")

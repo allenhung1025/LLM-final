@@ -5,6 +5,20 @@ AWS configs:
 - Instance: g5.2xlarge
 - storage: 150 GB
 
+## Python env
+
+```
+conda create -n project python=3.10
+conda activate project
+conda install pytorch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 -c pytorch
+pip install -r requirements.txt
+pip install ninja
+pip install flash-attn==2.6.3 --no-build-isolation
+pip install wandb
+pip install -U "huggingface_hub[cli]"
+```
+
+
 ## Reminders
 - Get model permission access from the huggingface model card
 
