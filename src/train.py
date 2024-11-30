@@ -16,7 +16,7 @@ import logging
 from dataclasses import dataclass, field
 from utils.constant import MODEL_MAP, PROJECT_ROOT
 from utils.determine_device import determine_device
-from utils.data_prepare import load_training_data, TextDataset
+from utils.data_prepare import load_training_data, TextDataset, prepare_training_data
 # from trainer import Trainer
 import wandb
 
@@ -72,13 +72,10 @@ def main():
     
     wandb.login(key=wandb_api)
     
-    
-    data = load_training_data(args.model + "_train.jsonl")
+    data = load_training_data("../data/train.jsonl")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_MAP[args.model])
     tokenizer.pad_token = tokenizer.eos_token
     dataset = TextDataset(data, tokenizer, model_config.seq_len)
-    
-    
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
 
@@ -93,7 +90,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_MAP[args.model], 
         torch_dtype=torch.bfloat16,  # we need half-precision to fit into our machine
-        attn_implementation= model_config.attention_type,
+        #attn_implementation= model_config.attention_type,
         trust_remote_code=True
     ).to(device)
     

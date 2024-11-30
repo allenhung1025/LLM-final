@@ -19,7 +19,7 @@ def prepare_training_data() -> None:
     with open(file, "w") as f:
         for i in tqdm(range(len(train)), desc="Writing data to jsonl"):
             content = train[i]["content"]
-            solution = train[i]["python"]
+            solution = train[i]["python_clean"]
             # print(content)
             message = "".join([PREFIX, content])
             # Create a JSON object
