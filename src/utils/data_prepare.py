@@ -90,14 +90,15 @@ class TextDataset(Dataset):
         input_text = self.data[idx]["input"]
         output_text = self.data[idx]["output"]
         
-        input_tokens = self.tokenizer(input_text, 
+        input_tokens = self.tokenizer(text=input_text,  
                                       return_tensors='pt', 
                                       padding='max_length', 
                                       truncation=True, 
                                       max_length=self.max_len,
                                       return_token_type_ids=False)
         
-        output_tokens = self.tokenizer(output_text, 
+        output_tokens = self.tokenizer(text=input_text, 
+                                       text_target=output_text,  # For target output
                                        return_tensors='pt', 
                                        padding='max_length', 
                                        truncation=True, 

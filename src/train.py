@@ -119,10 +119,10 @@ def main():
     
     # Elvaluate
     results = trainer.evaluate(eval_dataset=val_dataset)
-    print(f"Perplexity (seq_len = {training_args.seq_len}): {math.exp(results['eval_loss']):.2f}")
+    print(f"Perplexity (seq_len = {model_config.seq_len}): {math.exp(results['eval_loss']):.2f}")
     
     perplexity = math.exp(results['eval_loss'])
-    log_perplexity(log_file_path, training_args.seq_len, perplexity)
+    log_perplexity(log_file_path,  model_config.seq_len, perplexity)
 
 
 if __name__ == "__main__":
