@@ -1,0 +1,18 @@
+{   
+    "run_name": "test",
+    "output_dir": "models/salesforce",
+    "overwrite_output_dir": true,
+    "report_to": "wandb",
+    "eval_strategy": "epoch",
+    "logging_steps": 1,
+    "num_train_epochs": 1,
+    "save_strategy": "steps",
+    "save_steps": 500,
+    "bf16": true,
+    "seq_len": 256,
+    "per_device_train_batch_size": 8,
+    "learning_rate": 5e-5,
+    "weight_decay": 5e-3,
+    "warmup_ratio": 0.05,
+    "lr_scheduler_type": "cosine"
+}
