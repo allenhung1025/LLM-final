@@ -6,7 +6,9 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.determine_device import determine_device
 from datasets import load_dataset
-
+import sacrebleu
+import re
+from codebleu import calc_codebleu
 
 MODEL_MAP = {
     "llama38": "meta-llama/Meta-Llama-3-8B",
@@ -32,6 +34,18 @@ def prepare_messages(title: str, description: str, python_clean: str) -> List[Un
     return res
 
 
+def extract_solution_code(input_string):
+    # Use regex to find the content after "class Solution:"
+    pattern = r'class Solution:(.+?)(?=\n\n|\n\S|\Z)'
+    match = re.search(pattern, input_string, re.DOTALL)
+    
+    if match:
+        # Strip leading and trailing whitespace
+        return match.group(1).strip()
+    else:
+        return None
+bleu_list = []
+codebleu_list = []
 @torch.inference_mode()
 def generate_output(
     model: AutoModelForCausalLM,
@@ -49,7 +63,7 @@ def generate_output(
             
            
             inputs =  inputs = tokenizer(
-                batch_prompts, 
+                batch_prompts,
                 return_tensors='pt', 
                 return_token_type_ids=False, 
                 padding=True, 
@@ -66,9 +80,31 @@ def generate_output(
             response_decoded = tokenizer.batch_decode(response, skip_special_tokens=True)
 
             for j, message in enumerate(batch_messages):
+                if extract_solution_code(response_decoded[j]) != None:
+                    reference = [ message["python_clean"]]
+                    candidate = extract_solution_code(response_decoded[j])
+                    sacrebleu_score = sacrebleu.sentence_bleu(candidate, reference) 
+                    print(f"SacreBLEU: {sacrebleu_score.score}")
+                    bleu_list.append(sacrebleu_score.score)
+
+
+                    prediction = candidate
+                    reference = reference[0]
+
+                    result = calc_codebleu([reference], [prediction], lang="python", weights=(0.25, 0.25, 0.25, 0.25), tokenizer=None)
+                    print(f"CodeBLEU: {result['codebleu'] * 100: .2f}")
+                    codebleu_list.append(result['codebleu'] * 100)
                 json.dump({"title": message["title"], "prompt": batch_prompts[j], "output": response_decoded[j], "groundtruth": message["python_clean"]}, f)
                 f.write("\n")
+         # Calculate average BLEU score
+        avg_bleu = sum(bleu_list) / len(bleu_list)
 
+        # Calculate average CodeBLEU score
+        avg_codebleu = sum(codebleu_list) / len(codebleu_list)
+
+        # Print with .2f formatting
+        print(f"Average BLEU: {avg_bleu:.2f}")
+        print(f"Average CodeBLEU: {avg_codebleu:.2f}")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -78,12 +114,6 @@ def main():
         required=True, 
         choices=MODEL_MAP.keys(),
         help="The type of the model: pretrained, sft, or instruct"
-    )
-    parser.add_argument(
-        "--prompts",
-        type=str,
-        required=True,
-        help="A jsonl file where each line has an input prompt"
     )
     parser.add_argument(
         "--output",
@@ -102,7 +132,6 @@ def main():
     title = dataset['train']["title"]
     python = dataset['train']["python_clean"]
     content = dataset['train']['content']
-    # import pdb; pdb.set_trace()
     device = determine_device()
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_MAP[args.model_type], 
