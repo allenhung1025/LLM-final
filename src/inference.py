@@ -81,22 +81,25 @@ def generate_output(
 
             for j, message in enumerate(batch_messages):
                 if extract_solution_code(response_decoded[j]) != None:
-                    reference = [ message["python_clean"]]
-                    candidate = extract_solution_code(response_decoded[j])
-                    sacrebleu_score = sacrebleu.sentence_bleu(candidate, reference) 
-                    print(f"SacreBLEU: {sacrebleu_score.score}")
-                    bleu_list.append(sacrebleu_score.score)
+                    try:
+                        reference = [ message["python_clean"]]
+                        candidate = extract_solution_code(response_decoded[j])
+                        sacrebleu_score = sacrebleu.sentence_bleu(candidate, reference) 
+                        print(f"SacreBLEU: {sacrebleu_score.score}")
+                        bleu_list.append(sacrebleu_score.score)
 
 
-                    prediction = candidate
-                    reference = reference[0]
+                        prediction = candidate
+                        reference = reference[0]
 
-                    result = calc_codebleu([reference], [prediction], lang="python", weights=(0.25, 0.25, 0.25, 0.25), tokenizer=None)
-                    print(f"CodeBLEU: {result['codebleu'] * 100: .2f}")
-                    codebleu_list.append(result['codebleu'] * 100)
+                        result = calc_codebleu([reference], [prediction], lang="python", weights=(0.25, 0.25, 0.25, 0.25), tokenizer=None)
+                        print(f"CodeBLEU: {result['codebleu'] * 100: .2f}")
+                        codebleu_list.append(result['codebleu'] * 100)
+                    except:
+                        continue
                 json.dump({"title": message["title"], "prompt": batch_prompts[j], "output": response_decoded[j], "groundtruth": message["python_clean"]}, f)
                 f.write("\n")
-         # Calculate average BLEU score
+    # Calculate average BLEU score
         avg_bleu = sum(bleu_list) / len(bleu_list)
 
         # Calculate average CodeBLEU score
