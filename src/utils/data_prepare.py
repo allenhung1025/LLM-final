@@ -86,29 +86,41 @@ class TextDataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
+        # Get input and output text
+        input_text = self.data[idx].get("input", None)
+        output_text = self.data[idx].get("output", None)
+
+        # Handle None cases for input or output
+        if input_text is None:
+            print(f"Warning: input_text is None at index {idx}")
+            input_text = ""  # Default to an empty string or a placeholder
+
+        if output_text is None:
+            print(f"Warning: output_text is None at index {idx}")
+            output_text = ""  # Default to an empty string or a placeholder
+
         # Tokenize input
-        input_text = self.data[idx]["input"]
-        output_text = self.data[idx]["output"]
-        
-        input_tokens = self.tokenizer(text=input_text,  
-                                      return_tensors='pt', 
-                                      padding='max_length', 
-                                      truncation=True, 
-                                      max_length=self.max_len,
-                                      return_token_type_ids=False)
-        
-        output_tokens = self.tokenizer(text=input_text, 
-                                       text_target=output_text,  # For target output
-                                       return_tensors='pt', 
-                                       padding='max_length', 
-                                       truncation=True, 
-                                       max_length=self.max_len,
-                                       return_token_type_ids=False)
-        
+        input_tokens = self.tokenizer(
+            text=input_text,  
+            return_tensors='pt', 
+            padding='max_length', 
+            truncation=True, 
+            max_length=self.max_len,
+            return_token_type_ids=False
+        )
+
+        # Tokenize output (target)
+        output_tokens = self.tokenizer(
+            text_target=output_text,  
+            return_tensors='pt', 
+            padding='max_length', 
+            truncation=True, 
+            max_length=self.max_len,
+            return_token_type_ids=False
+        )
         # Return the tokenized data as a dictionary
         return {
             "input_ids": input_tokens["input_ids"].squeeze(0),  # Remove batch dimension
             "attention_mask": input_tokens["attention_mask"].squeeze(0),  # Remove batch dimension
             "labels": output_tokens["input_ids"].squeeze(0)  # Remove batch dimension
         }
-

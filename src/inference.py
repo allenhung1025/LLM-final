@@ -13,7 +13,8 @@ from codebleu import calc_codebleu
 MODEL_MAP = {
     "llama38": "meta-llama/Meta-Llama-3-8B",
     "gemma": "google/gemma-7b",
-    "salesforce": "Salesforce/codegen-350M-mono"
+    "salesforce": "Salesforce/codegen-350M-mono",
+    "finetuned_salesforce": "./src/models/salesforce/checkpoint-15000",
 }
 
 
@@ -30,20 +31,21 @@ def prepare_messages(title: str, description: str, python_clean: str) -> List[Un
     #     data = [json.loads(line) for line in f]
     res = []
     for ti, des, python in zip(title, description, python_clean):
-        res.append({"description": f"generate python code with the following description : {des}", "python_clean": python, "title": ti})
+        res.append({"description": f"Solve the following Leetcode problem in Python: \n{des}", "python_clean": python, "title": ti})
     return res
 
 
 def extract_solution_code(input_string):
-    # Use regex to find the content after "class Solution:"
-    pattern = r'class Solution:(.+?)(?=\n\n|\n\S|\Z)'
+    # Use regex to capture the full function definition, including "def"
+    pattern = r'(def\s+\w+\(.*?\):(?:.+?)(?=\n\n|\n\S|\Z))'
     match = re.search(pattern, input_string, re.DOTALL)
     
     if match:
-        # Strip leading and trailing whitespace
+        # Return the full match with "def" included
         return match.group(1).strip()
     else:
         return None
+
 bleu_list = []
 codebleu_list = []
 @torch.inference_mode()
@@ -80,10 +82,13 @@ def generate_output(
             response_decoded = tokenizer.batch_decode(response, skip_special_tokens=True)
 
             for j, message in enumerate(batch_messages):
+                print(response_decoded[j])
                 if extract_solution_code(response_decoded[j]) != None:
                     try:
                         reference = [ message["python_clean"]]
                         candidate = extract_solution_code(response_decoded[j])
+                        print("title: ", message["title"])
+                        print(candidate)
                         sacrebleu_score = sacrebleu.sentence_bleu(candidate, reference) 
                         print(f"SacreBLEU: {sacrebleu_score.score}")
                         bleu_list.append(sacrebleu_score.score)
@@ -142,7 +147,9 @@ def main():
     ).to(device)
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(MODEL_MAP[args.model_type])
-    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    #tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
     messages = prepare_messages(title, content, python)
     generate_output(model, tokenizer, messages, args.output, args.model_type, device, args.batch_size)
 
