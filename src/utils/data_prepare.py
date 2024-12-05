@@ -93,11 +93,12 @@ class TextDataset(Dataset):
         output_text = self.data[idx].get("output", " ")
         
         # Combine input and output for training
-        if output_text == None:
-            full_text = input_text
-        else:
-            full_text = input_text + " " + output_text
-        
+        # if output_text == None:
+        #     full_text = input_text
+        # else:
+        #     full_text = input_text + " " + output_text
+        # Intelligent text combination based on model task
+        full_text = f"{input_text} {output_text} {self.tokenizer.eos_token}".strip()
         # Tokenize the full text
         encodings = self.tokenizer(
             text=full_text,
@@ -110,7 +111,7 @@ class TextDataset(Dataset):
         
         # Create labels by shifting input_ids
         labels = encodings['input_ids'].clone()
-        labels[labels == self.tokenizer.pad_token_id] = -100  # Ignore pad tokens in loss
+        #labels[labels == self.tokenizer.pad_token_id] = -100  # Ignore pad tokens in loss
         
         return {
             "input_ids": encodings["input_ids"].squeeze(0),

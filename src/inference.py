@@ -14,7 +14,7 @@ MODEL_MAP = {
     "llama38": "meta-llama/Meta-Llama-3-8B",
     "gemma": "google/gemma-7b",
     "salesforce": "Salesforce/codegen-350M-mono",
-    "finetuned_salesforce": "./models/salesforce",
+    "finetuned_salesforce": "./src/models/salesforce/checkpoint-500",
 }
 
 
@@ -64,7 +64,7 @@ def generate_output(
             batch_prompts = [message if isinstance(message, str) else message["description"] for message in batch_messages]
             
            
-            inputs =  inputs = tokenizer(
+            inputs = tokenizer(
                 batch_prompts,
                 return_tensors='pt', 
                 return_token_type_ids=False, 
@@ -78,7 +78,7 @@ def generate_output(
             #     inputs = {'input_ids': inputs}
             inputs = {k: v.to(device) for k, v in inputs.items()}
             
-            response = model.generate(**inputs, max_new_tokens=300)
+            response = model.generate(**inputs, max_new_tokens=768)   # Keep only top 50 tokens with highest probabilities)
             response_decoded = tokenizer.batch_decode(response, skip_special_tokens=True)
 
             for j, message in enumerate(batch_messages):

@@ -2,7 +2,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
-    #Trainer,
+    Trainer,
     TrainingArguments,
     HfArgumentParser
 )
@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from utils.constant import MODEL_MAP, PROJECT_ROOT
 from utils.determine_device import determine_device
 from utils.data_prepare import load_training_data, TextDataset, prepare_training_data
-from trainer import Trainer
 import wandb
 
 torch.cuda.empty_cache()
@@ -33,31 +32,32 @@ class ModelConfig:
     seq_len: int = field(default=512)
     attention_type: str = field(default="flash_attention_2")
 
-class CausalDataCollator:
-    def __init__(self, tokenizer=None, mlm=False):
-        self.tokenizer = tokenizer
-        self.mlm = mlm
+# class CausalDataCollator:
+#     def __init__(self, tokenizer=None, mlm=False):
+#         self.tokenizer = tokenizer
+#         self.mlm = mlm
 
-    def __call__(self, features):
-        # Pad the features
-        batch = self.tokenizer.pad(
-            features, 
-            padding=True, 
-            return_tensors='pt'
-        )
+#     def __call__(self, features):
+#         # Pad the features
+#         batch = self.tokenizer.pad(
+#             features, 
+#             padding=True, 
+#             return_tensors='pt'
+#         )
 
-        # Shift labels by one token to the right
-        labels = batch['input_ids'].clone()
-        labels[:, :-1] = batch['input_ids'][:, 1:]
-        labels[:, -1] = self.tokenizer.pad_token_id
+#         # Shift labels by one token to the right
+#         labels = batch['input_ids'].clone()
+#         labels[:, :-1] = batch['input_ids'][:, 1:]
+#         labels[:, -1] = self.tokenizer.eos_token_id
 
-        # Replace padding with -100 to ignore in loss calculation
-        labels[labels == self.tokenizer.pad_token_id] = -100
+#         # Replace padding with -100 to ignore in loss calculation
+#         #labels[labels == self.tokenizer.pad_token_id] = -100
 
-        batch['labels'] = labels
-        return batch
+#         batch['labels'] = labels
+#         return batch
 
 # Usage
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -109,8 +109,8 @@ def main():
     # Use random_split to split the dataset
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
     # data prepare for causal language model 
-    data_collator = CausalDataCollator(tokenizer=tokenizer, mlm=False)
-    
+    # data_collator = CausalDataCollator(tokenizer=tokenizer, mlm=False)
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
     # model + flash attention
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_MAP[args.model], 
@@ -119,25 +119,25 @@ def main():
         trust_remote_code=True
     ).to(device)
     # Create optimizer
-    optimizer = torch.optim.AdamW(
-        model.parameters(), 
-        lr=training_args.learning_rate,  # Use learning rate from training arguments
-        weight_decay=training_args.weight_decay  # Optional: add weight decay if specified in args
-    )
+    # optimizer = torch.optim.AdamW(
+    #     model.parameters(), 
+    #     lr=training_args.learning_rate,  # Use learning rate from training arguments
+    #     weight_decay=training_args.weight_decay  # Optional: add weight decay if specified in args
+    # )
     # Trainer initialization
+    
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataloader=train_dataset,
-        val_dataloader=val_dataset,
-        optimizer = optimizer,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,
         data_collator=data_collator,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
     )
-    
+
     trainer.train()
     trainer.save_model(training_args.output_dir)
-    
+        
     
     ### add by me to save log of perplexity
     log_file_path = os.path.join(training_args.output_dir, "perplexity_log.txt")
