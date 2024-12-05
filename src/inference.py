@@ -32,6 +32,7 @@ def prepare_messages(title: str, description: str, python_clean: str) -> List[Un
     res = []
     for ti, des, python in zip(title, description, python_clean):
         res.append({"description": f"Solve the following Leetcode problem in Python: \n{des}", "python_clean": python, "title": ti})
+    res = res[-int(len(res) * 0.2): ]
     return res
 
 
