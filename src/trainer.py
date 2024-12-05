@@ -7,9 +7,10 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AdamW
 from utils.constant import PROJECT_ROOT
 from utils.determine_device import determine_device
+from torch.utils.data import DataLoader
 
 class Trainer:
-    def __init__(self, model, train_dataloader, val_dataloader, optimizer, args):
+    def __init__(self, model, args, train_dataloader, val_dataloader, optimizer, data_collator, tokenizer):
         self.device = determine_device()
         self.model = model.to(self.device)
         self.train_dataloader = train_dataloader
@@ -17,7 +18,19 @@ class Trainer:
         self.optimizer = optimizer
         self.args = args
         self.best_val_loss = float("inf")
-        self.save_path = Path(PROJECT_ROOT) / self.args.output
+        self.save_path = Path(PROJECT_ROOT) / self.args.output_dir
+        self.tokenizer = tokenizer
+
+        self.train_dataloader = DataLoader(
+            train_dataloader, 
+            collate_fn=data_collator, 
+            batch_size=args.per_device_train_batch_size
+        )
+        self.val_dataloader = DataLoader(
+            val_dataloader, 
+            collate_fn=data_collator, 
+            batch_size=args.per_device_eval_batch_size
+        )
 
 
     def train_one_epoch(self, epoch):
@@ -40,7 +53,6 @@ class Trainer:
             input_ids = batch["input_ids"].to(self.device)
             attention_mask = batch["attention_mask"].to(self.device)
             labels = batch["labels"].to(self.device)
-
             # Forward pass
             outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
 
@@ -89,16 +101,16 @@ class Trainer:
             self.best_val_loss = avg_val_loss
             # Save model checkpoint
             self.model.save_pretrained(self.save_path)
-            self.optimizer.save_pretrained(self.save_path)
+            #self.optimizer.save_pretrained(self.save_path)
 
     def train(self):
         """
         Main training loop that calls `train_one_epoch` for each epoch.
         """
         # Initialize WandB
-        wandb.init(project=self.args.model, config=self.args, name=f"training_run")
+        wandb.init(project="salesforce", config=self.args, name=f"training_run")
 
-        for epoch in range(self.args.epochs):
+        for epoch in range(self.args.num_train_epochs):
             print(f"Starting epoch {epoch + 1}")
             self.train_one_epoch(epoch)
         

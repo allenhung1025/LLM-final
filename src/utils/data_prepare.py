@@ -8,6 +8,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
+
+
 def prepare_training_data() -> None:
     # outdir = "train.jsonl"
     # if outdir not exist, create one
@@ -87,40 +89,31 @@ class TextDataset(Dataset):
     
     def __getitem__(self, idx):
         # Get input and output text
-        input_text = self.data[idx].get("input", None)
-        output_text = self.data[idx].get("output", None)
-
-        # Handle None cases for input or output
-        if input_text is None:
-            print(f"Warning: input_text is None at index {idx}")
-            input_text = ""  # Default to an empty string or a placeholder
-
-        if output_text is None:
-            print(f"Warning: output_text is None at index {idx}")
-            output_text = ""  # Default to an empty string or a placeholder
-
-        # Tokenize input
-        input_tokens = self.tokenizer(
-            text=input_text,  
-            return_tensors='pt', 
-            padding='max_length', 
-            truncation=True, 
+        input_text = self.data[idx].get("input", " ")
+        output_text = self.data[idx].get("output", " ")
+        
+        # Combine input and output for training
+        if output_text == None:
+            full_text = input_text
+        else:
+            full_text = input_text + " " + output_text
+        
+        # Tokenize the full text
+        encodings = self.tokenizer(
+            text=full_text,
+            return_tensors='pt',
+            padding='max_length',
+            truncation=True,
             max_length=self.max_len,
             return_token_type_ids=False
         )
-
-        # Tokenize output (target)
-        output_tokens = self.tokenizer(
-            text_target=output_text,  
-            return_tensors='pt', 
-            padding='max_length', 
-            truncation=True, 
-            max_length=self.max_len,
-            return_token_type_ids=False
-        )
-        # Return the tokenized data as a dictionary
+        
+        # Create labels by shifting input_ids
+        labels = encodings['input_ids'].clone()
+        labels[labels == self.tokenizer.pad_token_id] = -100  # Ignore pad tokens in loss
+        
         return {
-            "input_ids": input_tokens["input_ids"].squeeze(0),  # Remove batch dimension
-            "attention_mask": input_tokens["attention_mask"].squeeze(0),  # Remove batch dimension
-            "labels": output_tokens["input_ids"].squeeze(0)  # Remove batch dimension
+            "input_ids": encodings["input_ids"].squeeze(0),
+            "attention_mask": encodings["attention_mask"].squeeze(0),
+            "labels": labels.squeeze(0)
         }

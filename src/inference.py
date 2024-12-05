@@ -14,7 +14,7 @@ MODEL_MAP = {
     "llama38": "meta-llama/Meta-Llama-3-8B",
     "gemma": "google/gemma-7b",
     "salesforce": "Salesforce/codegen-350M-mono",
-    "finetuned_salesforce": "./src/models/salesforce/checkpoint-15000",
+    "finetuned_salesforce": "./models/salesforce",
 }
 
 
@@ -146,10 +146,10 @@ def main():
         torch_dtype="float16"  # we need half-precision to fit into our machine
     ).to(device)
     model.eval()
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_MAP[args.model_type])
-    #tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer = AutoTokenizer.from_pretrained("Salesforce/codegen-350M-mono", padding_side='left')
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    # if tokenizer.pad_token_id is None:
+    #     tokenizer.pad_token_id = tokenizer.eos_token_id
     messages = prepare_messages(title, content, python)
     generate_output(model, tokenizer, messages, args.output, args.model_type, device, args.batch_size)
 

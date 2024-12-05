@@ -1,6 +1,6 @@
 {   
     "run_name": "test",
-    "output_dir": "models/gemma",
+    "output_dir": "models/salesforce",
     "overwrite_output_dir": true,
     "report_to": "wandb",
     "eval_strategy": "epoch",
@@ -9,7 +9,7 @@
     "save_strategy": "steps",
     "save_steps": 500,
     "bf16": true,
-    "seq_len": 128,
+    "seq_len": 256,
     "per_device_train_batch_size": 8,
     "learning_rate": 5e-5,
     "weight_decay": 5e-3,
