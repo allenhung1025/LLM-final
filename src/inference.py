@@ -3,35 +3,33 @@ import json
 from typing import List, Union, Dict
 from tqdm import tqdm
 import torch
+from torch.utils.data import random_split
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.determine_device import determine_device
 from datasets import load_dataset
 import sacrebleu
 import re
 from codebleu import calc_codebleu
+from peft import PeftModel, PeftConfig
 
 MODEL_MAP = {
     "llama38": "meta-llama/Meta-Llama-3-8B",
     "gemma": "google/gemma-7b",
     "salesforce": "Salesforce/codegen-350M-mono",
     "finetuned_salesforce": "./src/models/salesforce/checkpoint-15000",
+    "llama_ft": "models/llama32-1b/fullft",
+    "llama32-1b": "meta-llama/Llama-3.2-1B",
+    "llama32-lora": "models/llama32-1b/test" 
 }
 
-
-# def prepare_messages(file_path: str, model_type: str) -> List[Union[str, Dict[str, str]]]:
-#     with open(file_path, "r") as f:
-#         data = [json.loads(line) for line in f]
-    
-#     if model_type == "pretrained":
-#         return [item["prompt"] for item in data]
-#     else:
-#         return [{"role": "user", "content": item["prompt"]} for item in data]
+torch.random.manual_seed(123)
 def prepare_messages(title: str, description: str, python_clean: str) -> List[Union[str, Dict[str, str]]]:
     # with open(file_path, "r") as f:
     #     data = [json.loads(line) for line in f]
     res = []
     for ti, des, python in zip(title, description, python_clean):
         res.append({"description": f"Solve the following Leetcode problem in Python: \n{des}", "python_clean": python, "title": ti})
+    res = res[-int(len(res) * 0.2):]
     return res
 
 
@@ -80,6 +78,7 @@ def generate_output(
             
             response = model.generate(**inputs, max_new_tokens=300)
             response_decoded = tokenizer.batch_decode(response, skip_special_tokens=True)
+            # import pdb; pdb.set_trace()
 
             for j, message in enumerate(batch_messages):
                 print(response_decoded[j])
@@ -135,16 +134,41 @@ def main():
         default=8,
         help="Number of prompts to process in each batch"
     )
+    parser.add_argument(
+        "--lora", 
+        type=bool,
+        default=False,
+        required=False, 
+        help="If the model is a LORA model, specify it's lora"
+    )
+    
+    
     args = parser.parse_args()
     dataset = load_dataset("allenhung1025/leetcode")
     title = dataset['train']["title"]
     python = dataset['train']["python_clean"]
     content = dataset['train']['content']
+    
+    # train_size = int(0.8 * len(dataset))
+    # val_size = len(dataset) - train_size
+    # _, val_dataset = random_split(dataset, [train_size, val_size])
+    # import pdb; pdb.set_trace()
+    # title = val_dataset["train"]['title']
+    # python = val_dataset["train"]['python_clean']
+    # content = val_dataset["train"]['content']
+    
+    
+    
     device = determine_device()
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_MAP[args.model_type], 
         torch_dtype="float16"  # we need half-precision to fit into our machine
     ).to(device)
+    
+    if args.lora:
+        print("Loading LORA model")
+        model = PeftModel.from_pretrained(model, MODEL_MAP[args.model_type]).to(device)
+    
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(MODEL_MAP[args.model_type])
     #tokenizer.add_special_tokens({'pad_token': '[PAD]'})

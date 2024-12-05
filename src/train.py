@@ -17,9 +17,16 @@ from dataclasses import dataclass, field
 from utils.constant import MODEL_MAP, PROJECT_ROOT
 from utils.determine_device import determine_device
 from utils.data_prepare import load_training_data, TextDataset, prepare_training_data
+from utils.print_model_params import print_trainable_parameters
 # from trainer import Trainer
 import wandb
+import os
+from peft import PeftConfig, LoraConfig, get_peft_model
 
+
+
+
+torch.manual_seed(123)
 torch.cuda.empty_cache()
 device = determine_device()
 
@@ -27,6 +34,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+
+
+# uncomment this line to download the data
+prepare_training_data()
 
 @dataclass
 class ModelConfig:
@@ -57,18 +68,55 @@ def parse_args():
         help="config filename for the model training"
     )
     
+    parser.add_argument(
+    "--lora_configs",
+    type=str,
+    default=None,  # Default value is None
+    required=False,  # Not mandatory
+    help="Config filename for the model training (file path)"
+    )
+    
     return parser.parse_args()
 
 
+class CausalDataCollator:
+    def __init__(self, tokenizer=None, mlm=False):
+        self.tokenizer = tokenizer
+        self.mlm = mlm
+
+    def __call__(self, features):
+        # Pad the features
+        batch = self.tokenizer.pad(
+            features, 
+            padding=True, 
+            return_tensors='pt'
+        )
+
+        # Shift labels by one token to the right
+        labels = batch['input_ids'].clone()
+        labels[:, :-1] = batch['input_ids'][:, 1:]
+        labels[:, -1] = self.tokenizer.pad_token_id
+
+        # Replace padding with -100 to ignore in loss calculation
+        labels[labels == self.tokenizer.pad_token_id] = -100
+
+        batch['labels'] = labels
+        return batch
+
+
 def main():
+    args = parse_args()
+    
+    os.environ["WANDB_PROJECT"] = args.model
+    
     with open("wandb_api.json") as json_file:
         credentials = json.load(json_file)
     
-    args = parse_args()
     wandb_api = credentials['wandb_api_key']
     parser = HfArgumentParser((ModelConfig, TrainingArguments))
     filename = args.configs + ".json"
     model_config, training_args = parser.parse_json_file(json_file=PROJECT_ROOT / "configs" / filename)
+    
     
     wandb.login(key=wandb_api)
     
@@ -81,18 +129,39 @@ def main():
 
     # Use random_split to split the dataset
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
-    
-
+    # import pdb; pdb.set_trace()
     # data prepare for causal language model 
+    # data_collator = CausalDataCollator(tokenizer, mlm=False)
+    
+    # original 
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    
     
     # model + flash attention
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_MAP[args.model], 
         torch_dtype=torch.bfloat16,  # we need half-precision to fit into our machine
-        #attn_implementation= model_config.attention_type,
+        attn_implementation= model_config.attention_type,
         trust_remote_code=True
     ).to(device)
+
+    
+    # LORA
+    if args.lora_configs:
+        
+        # lora_configs = LoraConfig.from_json_file(PROJECT_ROOT / "configs" / args.lora_configs)
+        lora_configs = LoraConfig(
+            r = 128,
+            lora_alpha = 512,
+            target_modules = ["q_proj", "k_proj", "v_proj"],
+            lora_dropout = 0.1,
+            bias="none",
+            task_type = "CAUSAL_LM"
+        )
+        model = get_peft_model(model, lora_configs)
+
+    print_trainable_parameters(model)
+    
     
     # Trainer initialization
     trainer = Trainer(
@@ -106,6 +175,7 @@ def main():
     
     trainer.train()
     trainer.save_model(training_args.output_dir)
+
     
     
     ### add by me to save log of perplexity
@@ -113,12 +183,13 @@ def main():
 
     def log_perplexity(log_file_path, seq_len, perplexity):
         with open(log_file_path, "a") as f:
-            f.write(f"Perplexity ({seq_len}): {perplexity:.2f}\n")
-        logger.info(f"Perplexity ({seq_len}): {perplexity:.2f}")
+            f.write(f"{training_args.run_name} Perplexity ({seq_len}): {perplexity:.2f}\n")
+        logger.info(f"{training_args.run_name} Perplexity ({seq_len}): {perplexity:.2f}")
         
     
     # Elvaluate
     results = trainer.evaluate(eval_dataset=val_dataset)
+    import pdb; pdb.set_trace()
     print(f"Perplexity (seq_len = {model_config.seq_len}): {math.exp(results['eval_loss']):.2f}")
     
     perplexity = math.exp(results['eval_loss'])

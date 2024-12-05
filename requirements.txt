@@ -11,3 +11,4 @@ litellm
 tree-sitter-python==0.21
 sacrebleu
 codebleu
+nltk

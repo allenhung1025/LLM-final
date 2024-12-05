@@ -9,5 +9,6 @@ DATA_ROOT = PROJECT_ROOT / "data"
 MODEL_MAP = {
     "llama38": "meta-llama/Meta-Llama-3-8B",
     "gemma": "google/gemma-7b",
-     "salesforce": "Salesforce/codegen-350M-mono"
+    "salesforce": "Salesforce/codegen-350M-mono",
+    "llama32-1b": "meta-llama/Llama-3.2-1B" 
 }
