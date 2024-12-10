@@ -21,7 +21,7 @@ from utils.print_model_params import print_trainable_parameters
 # from trainer import Trainer
 import wandb
 import os
-from peft import PeftConfig, LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, PrefixTuningConfig
 
 
 
@@ -74,6 +74,14 @@ def parse_args():
     default=None,  # Default value is None
     required=False,  # Not mandatory
     help="Config filename for the model training (file path)"
+    )
+    
+    parser.add_argument(
+    "--prefix_configs",
+    type=str,
+    default=None,  # Default value is None
+    required=False,  # Not mandatory
+    help="Config filename for prefix tuning (file path)"
     )
     
     return parser.parse_args()
@@ -148,17 +156,20 @@ def main():
     
     # LORA
     if args.lora_configs:
-        
-        # lora_configs = LoraConfig.from_json_file(PROJECT_ROOT / "configs" / args.lora_configs)
-        lora_configs = LoraConfig(
-            r = 128,
-            lora_alpha = 512,
-            target_modules = ["q_proj", "k_proj", "v_proj"],
-            lora_dropout = 0.1,
-            bias="none",
-            task_type = "CAUSAL_LM"
-        )
+        with open(args.lora_configs, "r") as file:
+            lora_config_dict = json.load(file)
+        lora_configs = LoraConfig(**lora_config_dict)
+        print("Initializing LoRA model")
         model = get_peft_model(model, lora_configs)
+    
+    if args.prefix_configs:
+        # Load JSON file
+        with open(args.prefix_configs, "r") as file:
+            peft_config_dict = json.load(file)
+        peft_config = PrefixTuningConfig(**peft_config_dict)
+        print("Initializing Prefix Tuning model")
+        model = get_peft_model(model, peft_config)
+
 
     print_trainable_parameters(model)
     
